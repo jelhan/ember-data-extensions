@@ -1,5 +1,5 @@
 var get = Ember.get, set = Ember.set;
-var HomePlanet, league, SuperVillain, superVillain, SecretLab, EvilMinion, Comment, env;
+var HomePlanet, league, SuperVillain, superVillain, SecretLab, EvilMinion, Comment, Poll, poll, Option, User, env;
 
 module("mixins - EmbeddedMixin", {
   setup: function() {
@@ -38,18 +38,40 @@ module("mixins - EmbeddedMixin", {
       root:            DS.attr('boolean'),
       children:        DS.hasMany('comment')
     });
+		
+		
+		Poll = DS.Model.extend({
+			title: DS.attr('string'),
+			options: DS.hasMany('option'),
+			users: DS.hasMany('user')
+		});
+		Option = DS.Model.extend({
+			poll: DS.belongsTo('poll'),
+			label: DS.attr('string')
+		});
+		User = DS.Model.extend({
+			poll: DS.belongsTo('poll'),
+			name: DS.attr('string')
+		});
+		
     env = setupStore({
       superVillain:    SuperVillain,
       homePlanet:      HomePlanet,
       secretLab:       SecretLab,
       evilMinion:      EvilMinion,
-      comment:         Comment
+      comment:         Comment,
+			poll:            Poll,
+			option:          Option,
+			user:            User
     });
     env.store.modelFor('superVillain');
     env.store.modelFor('homePlanet');
     env.store.modelFor('secretLab');
     env.store.modelFor('evilMinion');
     env.store.modelFor('comment');
+		env.store.modelFor('poll');
+		env.store.modelFor('option');
+		env.store.modelFor('user');
     env.container.register('serializer:application', DS.EmbeddedSerializer.extend());
     env.container.register('serializer:embedded_json', DS.EmbeddedSerializer.extend());
     env.container.register('adapter:embedded_json', DS.EmbeddedAdapter);
@@ -647,4 +669,74 @@ test("extractSingle with multiply-nested belongsTo", function() {
 
   equal(env.store.recordForId("superVillain", "1").get("firstName"), "Tom", "Secondary record, Tom, found in the steore");
   equal(env.store.recordForId("homePlanet", "1").get("name"), "Umber", "Nested Secondary record, Umber, found in the store");
+});
+
+test("serialize with (new) embedded objects (hasMany relationship), all embedded", function() {
+  cats = env.store.createRecord(Poll, { title: "Cats?", id: "123" });
+  var yes = env.store.createRecord(Option, { label: 'yes', poll: cats });
+	var no = env.store.createRecord(Option, { label: 'no', poll: cats });
+	var tom = env.store.createRecord(User, { name: "Tom", poll: cats, id: "1" });
+	var sven = env.store.createRecord(User, { name: "Sven", poll: cats, id: "2" });
+
+  env.container.register('serializer:poll', DS.EmbeddedSerializer.extend({
+    attrs: {
+      options: {embedded: 'always'},
+			users: {embedded: 'always'}
+    }
+  }));
+  var serializer = env.container.lookup("serializer:poll");
+
+  var json = serializer.serialize(cats);
+  deepEqual(json, {
+    title: "Cats?",
+    options: [{
+      label: 'yes',
+      poll_id: get(cats, "id")
+    },
+		{
+			label: 'no',
+      poll_id: get(cats, "id")
+		}],
+		users: [{
+			name: 'Tom',
+			poll_id: get(cats, "id"),
+			id: "1"
+		},
+		{
+			name: 'Sven',
+			poll_id: get(cats, "id"),
+			id: "2"
+		}]
+  });
+});
+
+test("serialize with (new) embedded objects (hasMany relationship), mixed embedded and non embedded relationship", function() {
+  cats = env.store.createRecord(Poll, { title: "Cats?", id: "123" });
+  var yes = env.store.createRecord(Option, { label: 'yes', poll: cats });
+	var no = env.store.createRecord(Option, { label: 'no', poll: cats });
+	var tom = env.store.createRecord(User, { name: "Tom", poll: cats, id: 1 });
+	var sven = env.store.createRecord(User, { name: "Sven", poll: cats, id: 2 });
+
+  env.container.register('serializer:poll', DS.EmbeddedSerializer.extend({
+    attrs: {
+      options: {embedded: 'always'}
+    }
+  }));
+  var serializer = env.container.lookup("serializer:poll");
+
+  var json = serializer.serialize(cats);
+  deepEqual(json, {
+    title: "Cats?",
+    options: [{
+      label: 'yes',
+      poll_id: get(cats, "id"),
+    },
+		{
+			label: 'no',
+      poll_id: get(cats, "id"),
+		}],
+		users: [
+			1, 2
+		]
+  });
 });
